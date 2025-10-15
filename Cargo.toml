@@ -1,0 +1,20 @@
+[package]
+name = "awx"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "signal", "time"] }
+ini = "1"
+dialoguer = "0.11"
+console = "0.15"
+dirs = "5"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+libc = "0.2"
+tempfile = { version = "3", optional = false }
+[dev-dependencies]
+serial_test = "0.5"
