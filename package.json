@@ -1,0 +1,44 @@
+{
+  "name": "@soranjiro/awx",
+  "version": "0.1.0",
+  "description": "AWS CLI authentication wrapper for seamless multi-account and MFA workflows",
+  "bin": {
+    "awx": "./bin/awx"
+  },
+  "scripts": {
+    "preinstall": "node scripts/install.js",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soranjiro/aws-auth-command.git"
+  },
+  "keywords": [
+    "aws",
+    "cli",
+    "authentication",
+    "sso",
+    "mfa",
+    "aws-cli"
+  ],
+  "author": "soranjiro",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/soranjiro/aws-auth-command/issues"
+  },
+  "homepage": "https://github.com/soranjiro/aws-auth-command#readme",
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ]
+}
