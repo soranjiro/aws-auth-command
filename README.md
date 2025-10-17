@@ -24,8 +24,12 @@ cargo install --git https://github.com/soranjiro/aws-auth-command
 ## Usage
 
 ```sh
-awx [OPTIONS] -- [AWS_COMMAND]...
+awx [COMMAND] [OPTIONS] -- [AWS_COMMAND]...
 ```
+
+Commands:
+- `login`: Login to a specific profile (SSO only)
+- `run`: Run AWS command with profile (default if no command specified)
 
 Key options (short)
 
@@ -36,17 +40,25 @@ Key options (short)
 
 Examples (fictional outputs)
 
-1) List S3 with a static profile that requires MFA
+1) Login to an SSO profile
 
 ```sh
-$ awx -p example-profile -- s3 ls
+$ awx login -p sso-work
+SSO token is not valid. Running: aws sso login --profile sso-work
+SSO login completed for profile 'sso-work'.
+```
+
+2) List S3 with a static profile that requires MFA
+
+```sh
+$ awx run -p example-profile -- s3 ls
 ✔ Select profile · example-profile [MFA][STATIC]
 ✔ Enter MFA code (6 digits) for arn:aws:iam::<ACCOUNT_ID>:mfa/test-user: · ******
 > aws s3 ls
 2025-10-16  my-bucket
 ```
 
-2) Run an EC2 query with an SSO profile (auto runs `aws sso login` if needed)
+3) Run an EC2 query with an SSO profile (auto runs `aws sso login` if needed)
 
 ```sh
 $ awx -p sso-work -- ec2 describe-instances
@@ -56,7 +68,7 @@ SSO login completed.
 { ... }
 ```
 
-3) CI / non-interactive failure when SSO login is required
+4) CI / non-interactive failure when SSO login is required
 
 ```sh
 $ AWX_NO_INTERACTIVE=1 awx -p production -- s3 ls
@@ -64,7 +76,7 @@ Error: SSO login required for profile "production". Run: aws sso login --profile
 Exit code: 2
 ```
 
-4) Show discovered profiles (example output)
+5) Show discovered profiles (example output)
 
 ```sh
 $ awx --config
