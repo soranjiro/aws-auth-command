@@ -72,10 +72,6 @@ enum Opt {
         #[clap(short = 'n', long = "no-interactive")]
         no_interactive: bool,
 
-        /// Verbose logging
-        #[clap(short = 'v', long = "verbose")]
-        verbose: bool,
-
         /// Any remaining arguments are passed to the aws CLI
         aws_args: Vec<String>,
     },
@@ -210,7 +206,7 @@ async fn run() -> Result<()> {
             }
             Ok(())
         }
-        Opt::Run { profile, config, clear_cache, no_interactive, verbose, aws_args } => {
+        Opt::Run { profile, config, clear_cache, no_interactive, aws_args } => {
             if config {
                 print_config(&profiles).await?;
                 return Ok(());
