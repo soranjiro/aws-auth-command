@@ -2,7 +2,26 @@
 
 Below are the minimal usage instructions and fictional examples only.
 
-Usage
+## Installation
+
+You don't need Rust. We provide prebuilt binaries via Homebrew and npm.
+
+See [INSTALL.md](INSTALL.md) for detailed installation instructions.
+
+Quick install:
+```sh
+# Homebrew
+brew tap soranjiro/awx https://github.com/soranjiro/aws-auth-command
+brew install awx
+
+# npm
+npm install -g @soranjiro/awx
+
+# Cargo
+cargo install --git https://github.com/soranjiro/aws-auth-command
+```
+
+## Usage
 
 ```sh
 awx [OPTIONS] -- [AWS_COMMAND]...
