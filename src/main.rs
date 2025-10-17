@@ -154,55 +154,20 @@ async fn run() -> Result<()> {
                 interactive_select_profile(&profiles)?
             };
 
-            let profile = profiles
-                .get(&selected_profile_name)
-                .ok_or_else(|| anyhow!("Profile '{}' not found", selected_profile_name))?
-                .clone();
+            let final_creds = perform_authentication(&profiles, &selected_profile_name, no_interactive).await?;
 
-            if profile.is_sso() {
-                match check_sts_identity(&selected_profile_name).await {
-                    Ok(true) => {
-                        println!("Already logged in to profile '{}'", selected_profile_name);
-                    }
-                    Ok(false) => {
-                        println!(
-                            "SSO token is not valid. Running: aws sso login --profile {}",
-                            selected_profile_name
-                        );
-                        let status = Command::new("aws")
-                            .arg("sso")
-                            .arg("login")
-                            .arg("--profile")
-                            .arg(&selected_profile_name)
-                            .status()
-                            .await
-                            .context("Failed to run aws sso login")?;
-                        if !status.success() {
-                            return Err(anyhow!("aws sso login failed"));
-                        }
-                        println!("SSO login completed for profile '{}'.", selected_profile_name);
-                    }
-                    Err(_) => {
-                        println!(
-                            "SSO token is not valid. Running: aws sso login --profile {}",
-                            selected_profile_name
-                        );
-                        let status = Command::new("aws")
-                            .arg("sso")
-                            .arg("login")
-                            .arg("--profile")
-                            .arg(&selected_profile_name)
-                            .status()
-                            .await
-                            .context("Failed to run aws sso login")?;
-                        if !status.success() {
-                            return Err(anyhow!("aws sso login failed"));
-                        }
-                        println!("SSO login completed for profile '{}'.", selected_profile_name);
-                    }
+            // Output environment variables for shell evaluation
+            println!("export AWS_PROFILE={}", selected_profile_name);
+            if let Some(creds) = final_creds {
+                println!("export AWS_ACCESS_KEY_ID={}", creds.access_key_id);
+                println!("export AWS_SECRET_ACCESS_KEY={}", creds.secret_access_key);
+                println!("export AWS_SESSION_TOKEN={}", creds.session_token);
+            }
+            // Output region if available
+            if let Some(profile) = profiles.get(&selected_profile_name) {
+                if let Some(region) = &profile.region {
+                    println!("export AWS_DEFAULT_REGION={}", region);
                 }
-            } else {
-                println!("Profile '{}' does not require SSO login.", selected_profile_name);
             }
             Ok(())
         }
@@ -335,6 +300,120 @@ async fn run() -> Result<()> {
             std::process::exit(exit_code);
         }
     }
+}
+
+async fn perform_authentication(profiles: &HashMap<String, Profile>, selected_profile_name: &str, no_interactive: bool) -> Result<Option<StsCredentials>> {
+    let profile = profiles
+        .get(selected_profile_name)
+        .ok_or_else(|| anyhow!("Profile '{}' not found", selected_profile_name))?
+        .clone();
+
+    if profile.is_sso() {
+        match check_sts_identity(&selected_profile_name).await {
+            Ok(true) => {
+                // logged in, proceed
+            }
+            Ok(false) => {
+                if no_interactive {
+                    return Err(anyhow!(
+                        "SSO login required for profile \"{}\". Run: aws sso login --profile {}",
+                        selected_profile_name, selected_profile_name
+                    ));
+                }
+                println!(
+                    "SSO token is not valid. Running: aws sso login --profile {}",
+                    selected_profile_name
+                );
+                let status = Command::new("aws")
+                    .arg("sso")
+                    .arg("login")
+                    .arg("--profile")
+                    .arg(&selected_profile_name)
+                    .status()
+                    .await
+                    .context("Failed to run aws sso login")?;
+                if !status.success() {
+                    return Err(anyhow!("aws sso login failed"));
+                }
+                println!("SSO login completed.");
+            }
+            Err(_) => {
+                // timeout or network issues -> treat as not logged in
+                if no_interactive {
+                    return Err(anyhow!(
+                        "SSO login required for profile \"{}\". Run: aws sso login --profile {}",
+                        selected_profile_name, selected_profile_name
+                    ));
+                }
+                println!(
+                    "SSO token is not valid. Running: aws sso login --profile {}",
+                    selected_profile_name
+                );
+                let status = Command::new("aws")
+                    .arg("sso")
+                    .arg("login")
+                    .arg("--profile")
+                    .arg(&selected_profile_name)
+                    .status()
+                    .await
+                    .context("Failed to run aws sso login")?;
+                if !status.success() {
+                    return Err(anyhow!("aws sso login failed"));
+                }
+                println!("SSO login completed.");
+            }
+        }
+    }
+
+    // Resolve credentials (MVP supports single assume-role step and MFA for static creds)
+    let final_creds = if profile.is_role() {
+        // Find base credentials from source_profile
+        let role_arn = profile.role_arn.clone().unwrap();
+        let source_name = profile
+            .source_profile
+            .clone()
+            .ok_or_else(|| anyhow!("source_profile missing for role profile"))?;
+
+        let base_profile = profiles
+            .get(&source_name)
+            .ok_or_else(|| anyhow!("source_profile '{}' not found", source_name))?
+            .clone();
+
+        // If base_profile needs MFA + static keys
+            if base_profile.requires_mfa() && base_profile.is_static() {
+            let mfa = base_profile.mfa_serial.clone().unwrap();
+            let base_temp = get_session_token_interactive(&source_name, &mfa).await?;
+            // use base_temp credentials in env to call assume-role
+            let session_name = format!("awx-{}", Utc::now().timestamp());
+            let assume_resp = assume_role_with_env(&role_arn, &session_name, &base_temp).await?;
+            Some(assume_resp)
+        } else if base_profile.is_sso() {
+            // let aws CLI handle using --profile <source_profile>
+            let session_name = format!("awx-{}", Utc::now().timestamp());
+            let assume_resp = assume_role_with_profile(&role_arn, &session_name, &source_name).await?;
+            Some(assume_resp)
+        } else if base_profile.is_static() {
+            // static keys -> ask aws cli to assume using the source_profile
+            let session_name = format!("awx-{}", Utc::now().timestamp());
+            let assume_resp = assume_role_with_profile(&role_arn, &session_name, &source_name).await?;
+            Some(assume_resp)
+        } else {
+            return Err(anyhow!(
+                "Unsupported source_profile auth method for '{}'. MVP supports SSO or static+MFA for source profiles.",
+                source_name
+            ));
+        }
+    } else if profile.requires_mfa() && profile.is_static() {
+        // Prompt for MFA for the profile's static keys
+        let mfa = profile.mfa_serial.clone().unwrap();
+        let tmp = get_session_token_interactive(&profile.name, &mfa).await?;
+        Some(tmp)
+    } else {
+        // static-only or SSO-only (no credential injection needed)
+        None
+    };
+
+    Ok(final_creds)
 }
 
 async fn ensure_aws_present() -> Result<()> {
