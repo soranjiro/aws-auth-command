@@ -28,7 +28,7 @@ awx [COMMAND] [OPTIONS] -- [AWS_COMMAND]...
 ```
 
 Commands:
-- `login`: Login to a specific profile (SSO only)
+- `login`: Login to a specific profile and output environment variables to set
 - `run`: Run AWS command with profile (default if no command specified)
 
 Key options (short)
@@ -46,6 +46,10 @@ Examples (fictional outputs)
 $ awx login -p sso-work
 SSO token is not valid. Running: aws sso login --profile sso-work
 SSO login completed for profile 'sso-work'.
+# AWS credentials for profile 'sso-work' are ready.
+# Copy and paste the following commands into your terminal:
+export AWS_PROFILE=sso-work
+# After setting the variables above, you can run AWS commands.
 ```
 
 2) List S3 with a static profile that requires MFA

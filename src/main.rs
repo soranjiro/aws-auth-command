@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use console::Style;
 use dialoguer::{theme::ColorfulTheme, Password, Select};
 // Minimal INI parser used to read AWS config/credentials for tests and MVP.
@@ -42,7 +42,33 @@ use tokio::time::{timeout, Duration};
 
 #[derive(Debug, Parser)]
 #[clap(name = "awx", version)]
-enum Opt {
+struct Opt {
+    /// Specify profile directly
+    #[clap(short = 'p', long = "profile")]
+    profile: Option<String>,
+
+    /// Show configuration/status
+    #[clap(short = 'c', long = "config")]
+    config: bool,
+
+    /// Clear cache (profile or 'all')
+    #[clap(long = "clear-cache")]
+    clear_cache: Option<String>,
+
+    /// Skip interactive UI (for CI)
+    #[clap(short = 'n', long = "no-interactive")]
+    no_interactive: bool,
+
+    /// Any remaining arguments are passed to the aws CLI
+    #[clap(trailing_var_arg = true)]
+    aws_args: Vec<String>,
+
+    #[clap(subcommand)]
+    command: Option<SubCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+enum SubCommand {
     /// Login to a specific profile
     Login {
         /// Specify profile directly
@@ -53,27 +79,11 @@ enum Opt {
         #[clap(short = 'n', long = "no-interactive")]
         no_interactive: bool,
     },
-    /// Run AWS command with profile (default behavior)
-    #[clap(trailing_var_arg = true)]
-    Run {
-        /// Specify profile directly
-        #[clap(short = 'p', long = "profile")]
-        profile: Option<String>,
-
-        /// Show configuration/status
-        #[clap(short = 'c', long = "config")]
-        config: bool,
-
-        /// Clear cache (profile or 'all')
-        #[clap(long = "clear-cache")]
-        clear_cache: Option<String>,
-
-        /// Skip interactive UI (for CI)
-        #[clap(short = 'n', long = "no-interactive")]
-        no_interactive: bool,
-
-        /// Any remaining arguments are passed to the aws CLI
-        aws_args: Vec<String>,
+    /// Print shell init snippet so `awx login` works without manual eval
+    Init {
+        /// Target shell (zsh/bash/fish). If omitted, detect from $SHELL.
+        #[clap(long = "shell")]
+        shell: Option<String>,
     },
 }
 
@@ -126,15 +136,15 @@ struct StsCredentials {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    if let Err(err) = run().await {
+    let opts = Opt::parse();
+    if let Err(err) = run(opts).await {
         eprintln!("Error: {}", err);
         return ExitCode::from(1);
     }
     ExitCode::from(0)
 }
 
-async fn run() -> Result<()> {
-    let opts = Opt::parse();
+async fn run(opts: Opt) -> Result<()> {
 
     // Ensure aws binary exists
     ensure_aws_present().await?;
@@ -144,8 +154,62 @@ async fn run() -> Result<()> {
         return Err(anyhow!("No AWS profiles found in ~/.aws/config or ~/.aws/credentials"));
     }
 
-    match opts {
-        Opt::Login { profile, no_interactive } => {
+    match opts.command {
+        Some(SubCommand::Init { shell }) => {
+                        let shell = shell
+                                .or_else(|| std::env::var("SHELL").ok().map(|p| {
+                                        std::path::Path::new(&p)
+                                                .file_name()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or("")
+                                                .to_string()
+                                }))
+                                .unwrap_or_else(|| "bash".to_string());
+
+                        let snippet = if shell.contains("zsh") || shell.contains("bash") {
+                                r#"# awx shell wrapper
+awx() {
+    if [ "$#" -ge 1 ] && [ "$1" = "login" ]; then
+        shift
+        eval "$(command awx login "$@")"
+    else
+        command awx "$@"
+    fi
+}
+# To enable automatically, add the following line to your shell rc (e.g., ~/.zshrc or ~/.bashrc):
+# eval "$(command awx init --shell=$(basename "$SHELL"))"
+"#
+                        } else if shell.contains("fish") {
+                                r#"# awx shell wrapper for fish
+function awx
+    if test (count $argv) -ge 1; and test $argv[1] = login
+        set -e argv[1]
+        eval (command awx login $argv)
+    else
+        command awx $argv
+    end
+end
+# To enable automatically, add this to your config.fish:
+# command awx init --shell=fish | source
+"#
+                        } else {
+                                r#"# Defaulting to bash-compatible snippet
+awx() {
+    if [ "$#" -ge 1 ] && [ "$1" = "login" ]; then
+        shift
+        eval "$(command awx login "$@")"
+    else
+        command awx "$@"
+    fi
+}
+# eval "$(command awx init --shell=bash)"
+"#
+                        };
+
+                        print!("{}", snippet);
+                        Ok(())
+                }
+        Some(SubCommand::Login { profile, no_interactive }) => {
             let selected_profile_name = if let Some(p) = profile {
                 p
             } else if no_interactive {
@@ -157,6 +221,9 @@ async fn run() -> Result<()> {
             let final_creds = perform_authentication(&profiles, &selected_profile_name, no_interactive).await?;
 
             // Output environment variables for shell evaluation
+            println!("# AWS credentials for profile '{}' are ready.", selected_profile_name);
+            let green = Style::new().green();
+            println!("{}", green.apply_to("# Copy and paste the following commands into your terminal:\n"));
             println!("export AWS_PROFILE={}", selected_profile_name);
             if let Some(creds) = final_creds {
                 println!("export AWS_ACCESS_KEY_ID={}", creds.access_key_id);
@@ -171,7 +238,13 @@ async fn run() -> Result<()> {
             }
             Ok(())
         }
-        Opt::Run { profile, config, clear_cache, no_interactive, aws_args } => {
+        None => {
+            // Default Run behavior
+            let profile = opts.profile;
+            let config = opts.config;
+            let clear_cache = opts.clear_cache;
+            let no_interactive = opts.no_interactive;
+            let aws_args = opts.aws_args;
             if config {
                 print_config(&profiles).await?;
                 return Ok(());
