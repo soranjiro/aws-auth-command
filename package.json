@@ -1,6 +1,6 @@
 {
   "name": "@soranjiro/awx",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AWS CLI authentication wrapper for seamless multi-account and MFA workflows",
   "bin": {
     "awx": "./bin/awx"

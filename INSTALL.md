@@ -82,6 +82,21 @@ sudo cp target/release/awx /usr/local/bin/
 
 ```sh
 awx --version
+
+## Maintainers: Release & Formula update
+
+1. Create and push a tag `vX.Y.Z`.
+2. GitHub Actions workflow `.github/workflows/release.yml` will:
+   - Build archives for targets:
+     - `x86_64-apple-darwin`, `aarch64-apple-darwin`
+     - `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+   - Upload assets to the GitHub Release
+   - Publish the npm package `@soranjiro/awx`
+   - Attempt to update `Formula/awx.rb` with URLs and SHA256 and push the change
+3. If the formula was not updated by CI, manually update `Formula/awx.rb`:
+   - Replace the versioned URLs to point to the new `vX.Y.Z`
+   - Replace SHA256 placeholders (`SHA256_*`) with checksums of uploaded archives
+4. Users can then `brew update && brew upgrade awx` or `npm i -g @soranjiro/awx`.
 ```
 
 ## Updating

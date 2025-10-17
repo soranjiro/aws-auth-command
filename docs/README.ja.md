@@ -2,6 +2,26 @@
 
 以下は本コマンドの最小限の使い方と、架空の例のみを示します。
 
+インストール
+
+```sh
+# npm（推奨）
+npm install -g @soranjiro/awx
+
+# Homebrew
+brew tap soranjiro/awx https://github.com/soranjiro/aws-auth-command
+brew install awx
+
+# Cargo（ソースから）
+cargo install --git https://github.com/soranjiro/aws-auth-command
+```
+
+npm の postinstall で事前ビルドバイナリのダウンロードに失敗した場合（オフライン等）は、Rust ツールチェーンを用いて以下でビルドできます。
+
+```sh
+AWX_BUILD_FROM_SOURCE=1 npm install -g @soranjiro/awx
+```
+
 使い方（構文）
 
 ```sh

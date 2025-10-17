@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+# Placeholder launcher for awx.
+# This file will be overwritten by the real binary during npm install.
+
+DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+BIN="$DIR/awx-real"
+
+# If the real binary exists (packaged under the canonical name), exec it.
+if [ -x "$DIR/awx" ]; then
+  exec "$DIR/awx" "$@"
+fi
+
+# Fallback to a renamed binary if present
+if [ -x "$BIN" ]; then
+  exec "$BIN" "$@"
+fi
+
+cat <<'EOF' 1>&2
+awx is not installed yet.
+
+If you installed via npm and see this message, the postinstall step failed to
+download the platform binary. You can either:
+
+  1) Ensure you have internet access and re-run:
+       npm install -g @soranjiro/awx
+
+  2) Build from source (requires Rust toolchain):
+       AWX_BUILD_FROM_SOURCE=1 npm install -g @soranjiro/awx
+
+Troubleshooting: https://github.com/soranjiro/aws-auth-command#installation
+EOF
+exit 1

@@ -4,21 +4,27 @@ Below are the minimal usage instructions and fictional examples only.
 
 ## Installation
 
-You don't need Rust. We provide prebuilt binaries via Homebrew and npm.
+You don't need Rust. We provide prebuilt binaries via npm and Homebrew.
 
 See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 
 Quick install:
 ```sh
+# npm (recommended)
+npm install -g @soranjiro/awx
+
 # Homebrew
 brew tap soranjiro/awx https://github.com/soranjiro/aws-auth-command
 brew install awx
 
-# npm
-npm install -g @soranjiro/awx
-
-# Cargo
+# Cargo (from source)
 cargo install --git https://github.com/soranjiro/aws-auth-command
+```
+
+If the npm postinstall fails to download a prebuilt binary (e.g. offline environment), you can build from source with Rust toolchain:
+
+```sh
+AWX_BUILD_FROM_SOURCE=1 npm install -g @soranjiro/awx
 ```
 
 ## Usage
