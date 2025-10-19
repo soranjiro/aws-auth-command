@@ -5,28 +5,18 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to publish (e.g., v0.2.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
-  build-release:
-    name: Build Release
-    needs: create-release
+  build-artifacts:
+    name: Build artifacts
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -79,27 +69,46 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz
-          asset_name: ${{ matrix.asset_name }}.tar.gz
-          asset_content_type: application/gzip
+      - name: Prepare dist
+        run: |
+          mkdir -p dist
+          mv target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz dist/
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 dist/${{ matrix.asset_name }}.tar.gz > dist/${{ matrix.asset_name }}.tar.gz.sha256
+          else
+            sha256sum dist/${{ matrix.asset_name }}.tar.gz > dist/${{ matrix.asset_name }}.tar.gz.sha256
+          fi
 
-  publish-npm:
-    if: false # disabled per request (brew-only releases)
-    name: Publish to npm (disabled)
-    needs: build-release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/*
+
+
+  publish-release:
+    name: Create/Update GitHub Release
+    needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
-      - run: echo "npm publish disabled"
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          files: |
+            dist/**/awx-*.tar.gz
+            dist/**/awx-*.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   update-homebrew:
     name: Update Homebrew Formula
-    needs: build-release
+    needs: publish-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
